@@ -142,15 +142,50 @@ def format_date(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
+class Colors:
+    """ANSI color codes for terminal output."""
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    MAGENTA = "\033[95m"
+    CYAN = "\033[96m"
+    
+    @classmethod
+    def disable(cls):
+        """Disable colors (for non-TTY output)."""
+        cls.RESET = ""
+        cls.BOLD = ""
+        cls.GREEN = ""
+        cls.YELLOW = ""
+        cls.RED = ""
+        cls.MAGENTA = ""
+        cls.CYAN = ""
+
+
+def colorize(text: str, color: str) -> str:
+    """Wrap text with ANSI color codes."""
+    return f"{color}{text}{Colors.RESET}"
+
+
 def print_single_report(cert_info: dict, warning_days: int, critical_days: int, verbose: bool = False):
     """Print detailed report for a single certificate."""
     if not cert_info["success"]:
-        print(f"\n[ERROR] {cert_info['hostname']}")
+        print(f"\n{colorize('[ERROR]', Colors.RED)} {cert_info['hostname']}")
         print(f"  Reason: {cert_info['error']}")
         return
-    
+
     status, message = check_expiration(cert_info, warning_days, critical_days)
-    
+
+    status_colors = {
+        "ok": Colors.GREEN,
+        "warning": Colors.YELLOW,
+        "critical": Colors.RED,
+        "expired": Colors.RED,
+        "error": Colors.MAGENTA
+    }
+
     status_icons = {
         "ok": "✓",
         "warning": "⚠",
@@ -158,11 +193,12 @@ def print_single_report(cert_info: dict, warning_days: int, critical_days: int, 
         "expired": "✗",
         "error": "?"
     }
-    
+
     icon = status_icons.get(status, "?")
-    
-    print(f"\n{icon} {cert_info['hostname']}")
-    print(f"  Status: {message}")
+    color = status_colors.get(status, Colors.RESET)
+
+    print(f"\n{colorize(icon, color)} {cert_info['hostname']}")
+    print(f"  Status: {colorize(message, color)}")
     print(f"  Subject: {cert_info['subject']}")
     print(f"  Issuer: {cert_info['issuer']}")
     print(f"  Valid From: {format_date(cert_info['not_before'])}")
@@ -176,23 +212,31 @@ def print_summary_report(results: list, warning_days: int, critical_days: int):
     if not results:
         print("No certificates to display.")
         return
-    
+
     status_counts = {"ok": 0, "warning": 0, "critical": 0, "expired": 0, "error": 0}
-    
+
+    status_colors = {
+        "ok": Colors.GREEN,
+        "warning": Colors.YELLOW,
+        "critical": Colors.RED,
+        "expired": Colors.RED,
+        "error": Colors.MAGENTA
+    }
+
     print("\n" + "=" * 80)
-    print("CERTIFICATE STATUS SUMMARY")
+    print(f"{Colors.BOLD}CERTIFICATE STATUS SUMMARY{Colors.RESET}")
     print("=" * 80)
     print(f"{'Domain':<40} {'Status':<15} {'Expires In':<20}")
     print("-" * 80)
-    
+
     for cert_info in results:
         if cert_info["success"]:
             status, message = check_expiration(cert_info, warning_days, critical_days)
             status_counts[status] = status_counts.get(status, 0) + 1
-            
+
             now = datetime.now(timezone.utc)
             days_left = (cert_info["not_after"] - now).days
-            
+
             if status == "expired":
                 status_str = "EXPIRED"
                 expiry_str = f"{abs(days_left)} days ago"
@@ -204,22 +248,19 @@ def print_summary_report(results: list, warning_days: int, critical_days: int):
             status_counts["error"] = status_counts.get("error", 0) + 1
             status_str = "ERROR"
             expiry_str = cert_info["error"][:20]
-        
-        status_colors = {
-            "ok": "",
-            "warning": "",
-            "critical": "",
-            "expired": "",
-            "error": ""
-        }
-        
+
+        color = status_colors.get(status, Colors.RESET)
         domain = cert_info["hostname"][:38]
-        print(f"{domain:<40} {status_str:<15} {expiry_str:<20}")
-    
+        colored_status = colorize(status_str, color)
+        print(f"{domain:<40} {colored_status:<15} {expiry_str:<20}")
+
     print("-" * 80)
-    print(f"Summary: OK={status_counts['ok']}, Warning={status_counts['warning']}, "
-          f"Critical={status_counts['critical']}, Expired={status_counts['expired']}, "
-          f"Errors={status_counts['error']}")
+    summary_text = (
+        f"Summary: OK={status_counts['ok']}, Warning={status_counts['warning']}, "
+        f"Critical={status_counts['critical']}, Expired={status_counts['expired']}, "
+        f"Errors={status_counts['error']}"
+    )
+    print(colorize(summary_text, Colors.BOLD))
     print("=" * 80 + "\n")
 
 
@@ -281,7 +322,11 @@ Examples:
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     
     args = parser.parse_args()
-    
+
+    # Disable colors if output is not a TTY
+    if not sys.stdout.isatty():
+        Colors.disable()
+
     config = load_config(args.config)
     
     if args.warning:
