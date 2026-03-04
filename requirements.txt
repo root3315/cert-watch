@@ -1,0 +1,9 @@
+# cert-watch has no external dependencies
+# All required modules are part of Python standard library:
+# - ssl
+# - socket
+# - datetime
+# - json
+# - argparse
+# - os
+# - sys
