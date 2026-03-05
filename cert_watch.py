@@ -16,6 +16,7 @@ from typing import Optional
 DEFAULT_WARNING_DAYS = 30
 DEFAULT_CRITICAL_DAYS = 7
 DEFAULT_CONFIG_FILE = "~/.cert-watch.json"
+ENV_CONFIG_PATH = "CERT_WATCH_CONFIG"
 
 
 def load_config(config_path: str) -> dict:
@@ -292,10 +293,15 @@ def list_domains(config: dict):
 
 
 def main():
+    env_config = os.environ.get(ENV_CONFIG_PATH)
+    
     parser = argparse.ArgumentParser(
         description="Monitor SSL certificate expiration dates",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
+Environment Variables:
+  {ENV_CONFIG_PATH}     Path to config file (overridden by -c flag)
+
 Examples:
   %(prog)s example.com
   %(prog)s -c check example.com other.com
@@ -323,11 +329,15 @@ Examples:
     
     args = parser.parse_args()
 
-    # Disable colors if output is not a TTY
+    if env_config and args.config == DEFAULT_CONFIG_FILE:
+        config_path = env_config
+    else:
+        config_path = args.config
+
     if not sys.stdout.isatty():
         Colors.disable()
 
-    config = load_config(args.config)
+    config = load_config(config_path)
     
     if args.warning:
         config["warning_days"] = args.warning
@@ -335,7 +345,7 @@ Examples:
         config["critical_days"] = args.critical
     
     if args.add:
-        if add_domain(config, args.add, args.config):
+        if add_domain(config, args.add, config_path):
             print(f"Added {args.add} to configuration")
         else:
             print(f"Failed to add {args.add}", file=sys.stderr)
@@ -343,7 +353,7 @@ Examples:
         return
     
     if args.remove:
-        if remove_domain(config, args.remove, args.config):
+        if remove_domain(config, args.remove, config_path):
             print(f"Removed {args.remove} from configuration")
         else:
             print(f"Failed to remove {args.remove}", file=sys.stderr)
